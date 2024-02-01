@@ -21,6 +21,7 @@ __pycache__
 /liuhaotian
 /custom_weights
 /checkpoints
+/finetune
 *.tar
 *.zip
 

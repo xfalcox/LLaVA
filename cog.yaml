@@ -23,20 +23,20 @@ build:
     - "sentencepiece==0.1.99"
     - "shortuuid==1.0.11"
     - "timm==0.6.13"
-    - "tokenizers==0.13.3"
+    - "tokenizers==0.15.0"
     - "torch==2.0.1"
     - "torchvision==0.15.2"
-    - "transformers==4.31.0"
+    - "transformers==4.36.2"
     - "wandb==0.15.12"
     - "wavedrom==2.0.3.post3"
     - "Pygments==2.16.1"
  
   run:
-    - curl -o /usr/local/bin/pget -L "https://github.com/replicate/pget/releases/download/v0.0.3/pget" && chmod +x /usr/local/bin/pget
-    - pip install flash_attn==2.3.3 --no-build-isolation
+    - curl -o /usr/local/bin/pget -L "https://github.com/replicate/pget/releases/download/v0.6.0/pget_Linux_x86_64" && chmod +x /usr/local/bin/pget
+    - pip install flash_attn==2.5.2 --no-build-isolation
 
 # predict.py defines how predictions are run on your model
 predict: "predict.py:Predictor"
 
 # train.py defines how finetuning works for this model
-train: "train.py:train"
+# train: "train.py:train"
