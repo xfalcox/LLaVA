@@ -1,4 +1,3 @@
-from typing import Optional
 import time
 import subprocess
 from threading import Thread
@@ -214,33 +213,53 @@ class Predictor(BasePredictor):
 
     def predict(
         self,
-        image: Path = Input(description="Input image"),
+        image: Path = Input(description="Input image", default=None),
         prompt: str = Input(description="Prompt to use for text generation"),
         top_p: float = Input(description="When decoding text, samples from the top p percentage of most likely tokens; lower to ignore less likely tokens", ge=0.0, le=1.0, default=1.0),
         temperature: float = Input(description="Adjusts randomness of outputs, greater than 1 is random and 0 is deterministic", default=0.2, ge=0.0),
         max_tokens: int = Input(description="Maximum number of tokens to generate. A word is generally 2-3 tokens", default=1024, ge=0),
+        history: list[str] = Input(description="List of earlier chat messages, alternating roles, starting with user input. Include <image> to specify which message to attach the image to.", default=None),
     ) -> ConcatenateIterator[str]:
         """Run a single prediction on the model"""
     
         conv_mode = infer_conv_mode(self.model_name)
         conv = conv_templates[conv_mode].copy()
     
-        image_data = load_image(str(image))
-        image_size = image_data.size
-        image_tensor = process_images([image_data], self.image_processor, self.model.config)
-        if type(image_tensor) is list:
-            image_tensor = [image.to(self.model.device, dtype=torch.float16) for image in image_tensor]
+        if image is not None:
+            image_data = [load_image(str(image))]
+            image_sizes = [i.size for i in image_data]
+            image_tensor = process_images(image_data, self.image_processor, self.model.config)
+            if type(image_tensor) is list:
+                image_tensor = [image.to(self.model.device, dtype=torch.float16) for image in image_tensor]
+            else:
+                image_tensor = image_tensor.to(self.model.device, dtype=torch.float16)
+            image_args = {
+                "images": image_tensor,
+                "image_sizes": image_sizes
+            }
+            num_images = len(image_data)
         else:
-            image_tensor = image_tensor.to(self.model.device, dtype=torch.float16)
+            image_args = {}
+            num_images = 0
     
-        # loop start
-    
-        # just one turn, always prepend image token
-        inp = DEFAULT_IMAGE_TOKEN + '\n' + prompt
-        conv.append_message(conv.roles[0], inp)
+        if history is not None:
+            for i, msg in enumerate(history):
+                conv.append_message(conv.roles[i % 2], msg)
 
+        conv.append_message(conv.roles[0], prompt)
         conv.append_message(conv.roles[1], None)
+
         prompt = conv.get_prompt()
+
+        # no image token, insert it in the first message
+        if prompt.count(DEFAULT_IMAGE_TOKEN) < num_images:
+            conv.messages[0] = (conv.messages[0][0], DEFAULT_IMAGE_TOKEN + '\n' + conv.messages[0][1])
+            prompt = conv.get_prompt()
+
+        if num_images != prompt.count(DEFAULT_IMAGE_TOKEN):
+            # There could be multiple but the gradio demo seems to avoid it
+            # raise ValueError("Number of images does not match number of <image> tokens in prompt")
+            raise ValueError("There can only be one <image> token in the prompt")
 
         replace_token = DEFAULT_IMAGE_TOKEN
         if getattr(self.model.config, 'mm_use_im_start_end', False):
@@ -265,15 +284,15 @@ class Predictor(BasePredictor):
         with torch.inference_mode():
             thread = Thread(target=self.model.generate, kwargs=dict(
                 inputs=input_ids,
-                images=image_tensor,
-                image_sizes=[image_size],
                 do_sample=True if temperature > 0.001 else False,
                 temperature=temperature,
                 top_p=top_p,
                 max_new_tokens=max_new_tokens,
                 streamer=streamer,
                 use_cache=True,
-                stopping_criteria=[stopping_criteria]))
+                stopping_criteria=[stopping_criteria],
+                **image_args
+            ))
             thread.start()
             # workaround: second-to-last token is always " "
             # but we want to keep it if it's not the second-to-last token
