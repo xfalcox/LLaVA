@@ -205,8 +205,8 @@ class Predictor(BasePredictor):
         The parameter `weights` can be set with environment variable COG_WEIGHTS or with cog predict -e [your weights here]
         """
         # download base models
-        model_path = "liuhaotian/llava-v1.5-13b"
-        # model_path = "liuhaotian/llava-v1.6-mistral-7b"
+        #model_path = "liuhaotian/llava-v1.5-13b"
+        model_path = "liuhaotian/llava-v1.6-mistral-7b"
         download_weights(["openai/clip-vit-large-patch14-336", model_path])
         self.model_name = get_model_name_from_path(model_path)
         disable_torch_init()
