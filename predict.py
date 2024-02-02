@@ -1,3 +1,4 @@
+from typing import Optional
 import time
 import subprocess
 from threading import Thread
@@ -198,8 +199,10 @@ def infer_conv_mode(model_name):
     return template_name
     
 class Predictor(BasePredictor):
-    def setup(self) -> None:
+    def setup(self, weights: Optional[Path] = None) -> None:
         """Load the model into memory to make running multiple predictions efficient. 
+
+        The parameter `weights` can be set with environment variable COG_WEIGHTS or with cog predict -e [your weights here]
         """
         # download base models
         model_path = "liuhaotian/llava-v1.5-13b"
@@ -207,9 +210,33 @@ class Predictor(BasePredictor):
         download_weights(["openai/clip-vit-large-patch14-336", model_path])
         self.model_name = get_model_name_from_path(model_path)
         disable_torch_init()
+        # custom weights
+        if weights is not None and str(weights) != "weights":
+            print(f"Loading custom LLaVA lora model: {weights}...")
+            self.model_name += "-custom-lora"
 
-        print(f"Loading base LLaVA model...")
-        self.tokenizer, self.model, self.image_processor, self.context_len = load_pretrained_model(model_path, model_name=self.model_name, model_base=None, load_8bit=False, load_4bit=False)
+            # remove folder if it already exists
+            custom_weights_dir = Path("/src/custom_weights")
+            if custom_weights_dir.exists():
+                shutil.rmtree(custom_weights_dir)
+
+            # download custom weights from URL
+            custom_weights_dir.mkdir(parents=True, exist_ok=True)
+            weights_url = str(weights)
+            download_location = custom_weights_dir / "custom_weights.tar"
+            subprocess.check_call(["pget", str(weights_url), str(download_location)], close_fds=False)
+
+            # extract tar file
+            custom_weights_file = tarfile.open(download_location)
+            custom_weights_file.extractall(path=custom_weights_dir)
+
+            model_base = model_path
+            model_path = custom_weights_dir
+        else:
+            print(f"Loading base LLaVA model...")
+            model_base = None
+
+        self.tokenizer, self.model, self.image_processor, self.context_len = load_pretrained_model(model_path, model_name=self.model_name, model_base=model_base, load_8bit=False, load_4bit=False)
 
     def predict(
         self,
